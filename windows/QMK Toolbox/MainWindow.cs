@@ -39,9 +39,11 @@ namespace QMK_Toolbox
             MinimumSize = new Size(1050, 600);
 
             Controls.Remove(logTextBox);
-            logTextBox.Dock = DockStyle.Fill;
             logTextBox.Anchor = AnchorStyles.None;
             logTextBox.Margin = new Padding(0);
+            // Dock must be assigned last: assigning Anchor after Dock can
+            // cancel Fill and leave the old designer coordinates in effect.
+            logTextBox.Dock = DockStyle.Fill;
 
             var split = new SplitContainer
             {
@@ -55,7 +57,24 @@ namespace QMK_Toolbox
                 Panel2MinSize = 250
             };
             split.SplitterDistance = Math.Max(250, split.Width / 2);
-            split.Panel1.Controls.Add(logTextBox);
+
+            // Match the embedded HID console's log rectangle:
+            // 36px header + 45px device-picker area, then 14px side/bottom margins.
+            // Both dark log boxes now start and end on the same horizontal lines.
+            var flashLogHost = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(14, 81, 14, 14)
+            };
+            flashLogHost.Controls.Add(logTextBox);
+            flashLogHost.Controls.Add(new Label
+            {
+                Text = "Flash Log",
+                Location = new Point(4, 4),
+                Size = new Size(120, 28),
+                TextAlign = ContentAlignment.MiddleLeft
+            });
+            split.Panel1.Controls.Add(flashLogHost);
 
             var rightLayout = new TableLayoutPanel
             {
