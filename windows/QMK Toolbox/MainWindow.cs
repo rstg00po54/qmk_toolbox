@@ -67,17 +67,40 @@ namespace QMK_Toolbox
             embeddedHidConsole.Dock = DockStyle.Fill;
             hidLogTab.Controls.Add(embeddedHidConsole);
 
+            // Use separate layout rows for the HID control and the tabs.
+            // The original flash buttons end at y=126; this area starts at
+            // y=140, so the new button can never cover them or the tab strip.
+            var logWorkspace = new TableLayoutPanel
+            {
+                Name = "logWorkspace",
+                Location = new Point(14, 140),
+                Size = new Size(ClientSize.Width - 28, ClientSize.Height - 153),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                ColumnCount = 1,
+                RowCount = 2,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty
+            };
+            logWorkspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            logWorkspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            logWorkspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var hidToolbar = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(4, 4, 4, 4),
+                Margin = Padding.Empty
+            };
+
             logTabs = new TabControl
             {
                 Name = "logTabs",
-                Location = new Point(14, 133),
-                Size = new Size(ClientSize.Width - 28, ClientSize.Height - 146),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty
             };
             logTabs.TabPages.Add(flashTab);
             logTabs.TabPages.Add(hidLogTab);
             logTabs.SelectedTab = flashTab;
-            Controls.Add(logTabs);
 
             // This button only sends a control request to the keyboard.
             // It stays accessible regardless of which log tab is selected.
@@ -85,9 +108,8 @@ namespace QMK_Toolbox
             {
                 Text = "Enable HID Log",
                 Name = "hidLogButton",
-                Location = new Point(ClientSize.Width - 159, 134),
-                Size = new Size(145, 24),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Width = 145,
+                Dock = DockStyle.Right
             };
             hidLogButton.Click += async (sender, e) =>
             {
@@ -106,8 +128,10 @@ namespace QMK_Toolbox
                     hidLogButton.Enabled = true;
                 }
             };
-            Controls.Add(hidLogButton);
-            hidLogButton.BringToFront();
+            hidToolbar.Controls.Add(hidLogButton);
+            logWorkspace.Controls.Add(hidToolbar, 0, 0);
+            logWorkspace.Controls.Add(logTabs, 0, 1);
+            Controls.Add(logWorkspace);
 
             // Start listening even while the Flash Log tab is selected.
             embeddedHidConsole.Show();
