@@ -10,6 +10,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Drawing;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -23,10 +24,106 @@ namespace QMK_Toolbox
 
         private readonly string _filePassedIn = string.Empty;
 
+        private HidConsoleWindow embeddedHidConsole;
+        private Button hidLogButton;
+        private bool keyboardLogEnabled;
+
+        // The HID console is always visible; this button only asks the firmware
+        // to start/stop emitting key events.
+        private void InitializeHidLogWorkspace()
+        {
+            SuspendLayout();
+
+            // Enlarge the initial window so both logs are usable.
+            Width = Math.Max(Width, 1320);
+            MinimumSize = new Size(1050, 600);
+
+            Controls.Remove(logTextBox);
+            logTextBox.Dock = DockStyle.Fill;
+            logTextBox.Anchor = AnchorStyles.None;
+            logTextBox.Margin = new Padding(0);
+
+            var split = new SplitContainer
+            {
+                Name = "logSplit",
+                Location = new Point(14, 133),
+                Size = new Size(ClientSize.Width - 28, ClientSize.Height - 146),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Orientation = Orientation.Vertical,
+                SplitterWidth = 6,
+                Panel1MinSize = 250,
+                Panel2MinSize = 250
+            };
+            split.SplitterDistance = Math.Max(250, split.Width / 2);
+            split.Panel1.Controls.Add(logTextBox);
+
+            var rightLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = new Padding(0),
+                Padding = new Padding(0)
+            };
+            rightLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var header = new Panel { Dock = DockStyle.Fill, Padding = new Padding(4, 3, 4, 3) };
+            header.Controls.Add(new Label
+            {
+                Text = "HID Console",
+                Dock = DockStyle.Left,
+                AutoSize = false,
+                Width = 120,
+                TextAlign = ContentAlignment.MiddleLeft
+            });
+
+            hidLogButton = new Button
+            {
+                Text = "Enable HID Log",
+                Dock = DockStyle.Right,
+                Width = 145
+            };
+            hidLogButton.Click += async (sender, e) =>
+            {
+                var requestedState = !keyboardLogEnabled;
+                hidLogButton.Enabled = false;
+                try
+                {
+                    if (await embeddedHidConsole.SetKeyboardLoggingAsync(requestedState))
+                    {
+                        keyboardLogEnabled = requestedState;
+                        hidLogButton.Text = keyboardLogEnabled ? "Disable HID Log" : "Enable HID Log";
+                    }
+                }
+                finally
+                {
+                    hidLogButton.Enabled = true;
+                }
+            };
+            header.Controls.Add(hidLogButton);
+            rightLayout.Controls.Add(header, 0, 0);
+
+            // Reuse the existing HID listener, avoiding a second reader.
+            embeddedHidConsole = HidConsoleWindow.GetInstance();
+            embeddedHidConsole.TopLevel = false;
+            embeddedHidConsole.FormBorderStyle = FormBorderStyle.None;
+            embeddedHidConsole.MinimumSize = Size.Empty;
+            embeddedHidConsole.MaximumSize = Size.Empty;
+            embeddedHidConsole.Dock = DockStyle.Fill;
+            rightLayout.Controls.Add(embeddedHidConsole, 0, 1);
+            split.Panel2.Controls.Add(rightLayout);
+            Controls.Add(split);
+            embeddedHidConsole.Show();
+            ResumeLayout(true);
+        }
+
         #region Window Events
         public MainWindow()
         {
             InitializeComponent();
+            InitializeHidLogWorkspace();
         }
 
         public MainWindow(string path) : this()
@@ -170,6 +267,7 @@ namespace QMK_Toolbox
             Settings.Default.targetSetting = (string)mcuBox.SelectedValue;
             Settings.Default.Save();
 
+            embeddedHidConsole?.Close();
             usbListener.Dispose();
         }
 
@@ -519,8 +617,7 @@ namespace QMK_Toolbox
 
         private void HidConsoleToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            HidConsoleWindow.GetInstance().Show(this);
-            HidConsoleWindow.GetInstance().Focus();
+            embeddedHidConsole.Focus();
         }
         #endregion
 
