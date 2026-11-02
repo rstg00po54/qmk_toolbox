@@ -1,6 +1,7 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace QMK_Toolbox.Hid
@@ -28,7 +29,10 @@ namespace QMK_Toolbox.Hid
 
         private void HidConsoleWindow_Load(object sender, EventArgs e)
         {
-            CenterToParent();
+            if (TopLevel)
+            {
+                CenterToParent();
+            }
 
             hidListener.hidDeviceConnected += HidDeviceConnected;
             hidListener.hidDeviceDisconnected += HidDeviceDisconnected;
@@ -49,6 +53,87 @@ namespace QMK_Toolbox.Hid
         private readonly HidListener hidListener = new();
 
         private HidConsoleDevice lastReportedDevice;
+
+        // Custom VIA command used by the matching V6 Max firmware:
+        // [07, F1, 01, enable, 'V', '6', 'L', 'G', ...]
+        // QMK VIA echoes the command after applying the requested state.
+        public async Task<bool> SetKeyboardLoggingAsync(bool enabled)
+        {
+            const ushort vendorId = 0x3434;
+            const ushort productId = 0x0960;
+
+            var device = hidListener.Devices?
+                .OfType<RawDevice>()
+                .FirstOrDefault(d => d.VendorId == vendorId && d.ProductId == productId);
+
+            if (device == null)
+            {
+                logTextBox.LogError("Keychron V6 Max Raw HID not found. Connect with a USB cable.");
+                return false;
+            }
+
+            try
+            {
+                bool accepted = await Task.Run(() =>
+                {
+                    var hid = device.HidDevice;
+                    hid.OpenDevice();
+                    try
+                    {
+                        int outputLength = hid.Capabilities.OutputReportByteLength;
+                        if (outputLength != 33)
+                        {
+                            return false; // 32-byte VIA payload plus report ID
+                        }
+
+                        var report = new byte[outputLength];
+                        report[0] = 0;       // HID report ID
+                        report[1] = 0x07;    // VIA id_custom_set_value
+                        report[2] = 0xF1;    // reserved V6 Max log channel
+                        report[3] = 0x01;    // log control
+                        report[4] = enabled ? (byte)1 : (byte)0;
+                        report[5] = (byte)'V';
+                        report[6] = (byte)'6';
+                        report[7] = (byte)'L';
+                        report[8] = (byte)'G';
+
+                        if (!hid.Write(report))
+                        {
+                            return false;
+                        }
+
+                        var response = hid.ReadReport(1200);
+                        var data = response?.Data;
+                        return data != null && data.Length >= 8 &&
+                               data[0] == 0x07 && data[1] == 0xF1 &&
+                               data[2] == 0x01 && data[3] == (enabled ? 1 : 0) &&
+                               data[4] == (byte)'V' && data[5] == (byte)'6' &&
+                               data[6] == (byte)'L' && data[7] == (byte)'G';
+                    }
+                    finally
+                    {
+                        hid.CloseDevice();
+                    }
+                });
+
+                if (accepted)
+                {
+                    logTextBox.LogHid(enabled
+                        ? "Keyboard confirmed: HID key logging ON"
+                        : "Keyboard confirmed: HID key logging OFF");
+                }
+                else
+                {
+                    logTextBox.LogError("No matching HID reply. Flash the V6 Max PC-log-control firmware first.");
+                }
+                return accepted;
+            }
+            catch (Exception ex)
+            {
+                logTextBox.LogError($"HID log control failed: {ex.Message}");
+                return false;
+            }
+        }
 
         private void HidDeviceConnected(BaseHidDevice device)
         {
