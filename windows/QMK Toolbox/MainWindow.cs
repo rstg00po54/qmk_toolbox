@@ -28,85 +28,70 @@ namespace QMK_Toolbox
         private Button hidLogButton;
         private bool keyboardLogEnabled;
 
-        // The HID console is always visible; this button only asks the firmware
-        // to start/stop emitting key events.
+        private TabControl logTabs;
+        private TabPage hidLogTab;
+
+        // Both logs occupy exactly the same rectangle. Switching tabs changes
+        // the displayed log; the firmware logging button does not switch tabs.
         private void InitializeHidLogWorkspace()
         {
             SuspendLayout();
 
-            // Enlarge the initial window so both logs are usable.
-            Width = Math.Max(Width, 1320);
-            MinimumSize = new Size(1050, 600);
-
             Controls.Remove(logTextBox);
             logTextBox.Anchor = AnchorStyles.None;
-            logTextBox.Margin = new Padding(0);
-            // Dock must be assigned last: assigning Anchor after Dock can
-            // cancel Fill and leave the old designer coordinates in effect.
+            logTextBox.Margin = Padding.Empty;
             logTextBox.Dock = DockStyle.Fill;
 
-            var split = new SplitContainer
+            var flashTab = new TabPage("Flash Log")
             {
-                Name = "logSplit",
+                Padding = Padding.Empty,
+                BackColor = Color.FromArgb(30, 30, 30),
+                UseVisualStyleBackColor = false
+            };
+            hidLogTab = new TabPage("HID Console")
+            {
+                Padding = Padding.Empty,
+                BackColor = Color.FromArgb(30, 30, 30),
+                UseVisualStyleBackColor = false
+            };
+            flashTab.Controls.Add(logTextBox);
+
+            // Keep the existing HID listener, decoding and output formatting.
+            // Remove only its separate window chrome and device selector.
+            embeddedHidConsole = HidConsoleWindow.GetInstance();
+            embeddedHidConsole.TopLevel = false;
+            embeddedHidConsole.FormBorderStyle = FormBorderStyle.None;
+            embeddedHidConsole.MinimumSize = Size.Empty;
+            embeddedHidConsole.MaximumSize = Size.Empty;
+            embeddedHidConsole.ConfigureEmbeddedLayout();
+            embeddedHidConsole.Dock = DockStyle.Fill;
+            hidLogTab.Controls.Add(embeddedHidConsole);
+
+            logTabs = new TabControl
+            {
+                Name = "logTabs",
                 Location = new Point(14, 133),
                 Size = new Size(ClientSize.Width - 28, ClientSize.Height - 146),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                Orientation = Orientation.Vertical,
-                SplitterWidth = 6,
-                Panel1MinSize = 250,
-                Panel2MinSize = 250
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
-            split.SplitterDistance = Math.Max(250, split.Width / 2);
+            logTabs.TabPages.Add(flashTab);
+            logTabs.TabPages.Add(hidLogTab);
+            logTabs.SelectedTab = flashTab;
+            Controls.Add(logTabs);
 
-            // Match the embedded HID console's log rectangle:
-            // 36px header + 45px device-picker area, then 14px side/bottom margins.
-            // Both dark log boxes now start and end on the same horizontal lines.
-            var flashLogHost = new Panel
-            {
-                Dock = DockStyle.Fill,
-                Padding = new Padding(14, 81, 14, 14)
-            };
-            flashLogHost.Controls.Add(logTextBox);
-            flashLogHost.Controls.Add(new Label
-            {
-                Text = "Flash Log",
-                Location = new Point(4, 4),
-                Size = new Size(120, 28),
-                TextAlign = ContentAlignment.MiddleLeft
-            });
-            split.Panel1.Controls.Add(flashLogHost);
-
-            var rightLayout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                RowCount = 2,
-                Margin = new Padding(0),
-                Padding = new Padding(0)
-            };
-            rightLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-            rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-            var header = new Panel { Dock = DockStyle.Fill, Padding = new Padding(4, 3, 4, 3) };
-            header.Controls.Add(new Label
-            {
-                Text = "HID Console",
-                Dock = DockStyle.Left,
-                AutoSize = false,
-                Width = 120,
-                TextAlign = ContentAlignment.MiddleLeft
-            });
-
+            // This button only sends a control request to the keyboard.
+            // It stays accessible regardless of which log tab is selected.
             hidLogButton = new Button
             {
                 Text = "Enable HID Log",
-                Dock = DockStyle.Right,
-                Width = 145
+                Name = "hidLogButton",
+                Location = new Point(ClientSize.Width - 159, 134),
+                Size = new Size(145, 24),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             hidLogButton.Click += async (sender, e) =>
             {
-                var requestedState = !keyboardLogEnabled;
+                bool requestedState = !keyboardLogEnabled;
                 hidLogButton.Enabled = false;
                 try
                 {
@@ -121,19 +106,10 @@ namespace QMK_Toolbox
                     hidLogButton.Enabled = true;
                 }
             };
-            header.Controls.Add(hidLogButton);
-            rightLayout.Controls.Add(header, 0, 0);
+            Controls.Add(hidLogButton);
+            hidLogButton.BringToFront();
 
-            // Reuse the existing HID listener, avoiding a second reader.
-            embeddedHidConsole = HidConsoleWindow.GetInstance();
-            embeddedHidConsole.TopLevel = false;
-            embeddedHidConsole.FormBorderStyle = FormBorderStyle.None;
-            embeddedHidConsole.MinimumSize = Size.Empty;
-            embeddedHidConsole.MaximumSize = Size.Empty;
-            embeddedHidConsole.Dock = DockStyle.Fill;
-            rightLayout.Controls.Add(embeddedHidConsole, 0, 1);
-            split.Panel2.Controls.Add(rightLayout);
-            Controls.Add(split);
+            // Start listening even while the Flash Log tab is selected.
             embeddedHidConsole.Show();
             ResumeLayout(true);
         }
@@ -636,7 +612,8 @@ namespace QMK_Toolbox
 
         private void HidConsoleToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            embeddedHidConsole.Focus();
+            logTabs.SelectedTab = hidLogTab;
+            logTabs.Focus();
         }
         #endregion
 
