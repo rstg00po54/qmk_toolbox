@@ -193,6 +193,9 @@ namespace QMK_Toolbox
 
         private void MainWindow_Shown(object sender, EventArgs e)
         {
+            // Receive console reports even when the user stays on Flash Log.
+            embeddedHidConsole.StartHidListening();
+
             if (Settings.Default.firstStart)
             {
                 EmbeddedResourceHelper.InitResourceFolder();
