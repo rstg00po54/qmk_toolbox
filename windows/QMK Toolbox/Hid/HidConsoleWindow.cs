@@ -39,6 +39,9 @@ namespace QMK_Toolbox.Hid
                 return;
             }
             hidListenerStarted = true;
+            // A background HID event may arrive immediately. Ensure Invoke()
+            // already has a window handle, even when this is an inactive tab.
+            _ = Handle;
             hidListener.hidDeviceConnected += HidDeviceConnected;
             hidListener.hidDeviceDisconnected += HidDeviceDisconnected;
             hidListener.consoleReportReceived += ConsoleReportReceived;
@@ -63,7 +66,12 @@ namespace QMK_Toolbox.Hid
                 CenterToParent();
             }
 
-            StartHidListening();
+            // The parent starts an embedded listener after its window appears.
+            // Standalone HID Console windows retain the original behavior.
+            if (TopLevel)
+            {
+                StartHidListening();
+            }
         }
 
         private void HidConsoleWindow_FormClosing(object sender, FormClosingEventArgs e)
