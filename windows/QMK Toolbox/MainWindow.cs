@@ -10,6 +10,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Drawing;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -23,10 +24,125 @@ namespace QMK_Toolbox
 
         private readonly string _filePassedIn = string.Empty;
 
+        private HidConsoleWindow embeddedHidConsole;
+        private Button hidLogButton;
+        private bool keyboardLogEnabled;
+
+        private TabControl logTabs;
+        private TabPage hidLogTab;
+
+        // Both logs occupy exactly the same rectangle. Switching tabs changes
+        // the displayed log; the firmware logging button does not switch tabs.
+        private void InitializeHidLogWorkspace()
+        {
+            SuspendLayout();
+
+            Controls.Remove(logTextBox);
+            logTextBox.Anchor = AnchorStyles.None;
+            logTextBox.Margin = Padding.Empty;
+            logTextBox.Dock = DockStyle.Fill;
+
+            var flashTab = new TabPage("Flash Log")
+            {
+                Padding = Padding.Empty,
+                BackColor = Color.FromArgb(30, 30, 30),
+                UseVisualStyleBackColor = false
+            };
+            hidLogTab = new TabPage("HID Console")
+            {
+                Padding = Padding.Empty,
+                BackColor = Color.FromArgb(30, 30, 30),
+                UseVisualStyleBackColor = false
+            };
+            flashTab.Controls.Add(logTextBox);
+
+            // Keep the existing HID listener, decoding and output formatting.
+            // Remove only its separate window chrome and device selector.
+            embeddedHidConsole = HidConsoleWindow.GetInstance();
+            embeddedHidConsole.TopLevel = false;
+            embeddedHidConsole.FormBorderStyle = FormBorderStyle.None;
+            embeddedHidConsole.MinimumSize = Size.Empty;
+            embeddedHidConsole.MaximumSize = Size.Empty;
+            embeddedHidConsole.ConfigureEmbeddedLayout();
+            embeddedHidConsole.Dock = DockStyle.Fill;
+            hidLogTab.Controls.Add(embeddedHidConsole);
+
+            // Use separate layout rows for the HID control and the tabs.
+            // The original flash buttons end at y=126; this area starts at
+            // y=140, so the new button can never cover them or the tab strip.
+            var logWorkspace = new TableLayoutPanel
+            {
+                Name = "logWorkspace",
+                Location = new Point(14, 140),
+                Size = new Size(ClientSize.Width - 28, ClientSize.Height - 153),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                ColumnCount = 1,
+                RowCount = 2,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty
+            };
+            logWorkspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            logWorkspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            logWorkspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var hidToolbar = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(4, 4, 4, 4),
+                Margin = Padding.Empty
+            };
+
+            logTabs = new TabControl
+            {
+                Name = "logTabs",
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty
+            };
+            logTabs.TabPages.Add(flashTab);
+            logTabs.TabPages.Add(hidLogTab);
+            logTabs.SelectedTab = flashTab;
+
+            // This button only sends a control request to the keyboard.
+            // It stays accessible regardless of which log tab is selected.
+            hidLogButton = new Button
+            {
+                Text = "Enable HID Log",
+                Name = "hidLogButton",
+                Width = 145,
+                Dock = DockStyle.Right
+            };
+            hidLogButton.Click += async (sender, e) =>
+            {
+                bool requestedState = !keyboardLogEnabled;
+                hidLogButton.Enabled = false;
+                try
+                {
+                    if (await embeddedHidConsole.SetKeyboardLoggingAsync(requestedState))
+                    {
+                        keyboardLogEnabled = requestedState;
+                        hidLogButton.Text = keyboardLogEnabled ? "Disable HID Log" : "Enable HID Log";
+                    }
+                }
+                finally
+                {
+                    hidLogButton.Enabled = true;
+                }
+            };
+            hidToolbar.Controls.Add(hidLogButton);
+            logWorkspace.Controls.Add(hidToolbar, 0, 0);
+            logWorkspace.Controls.Add(logTabs, 0, 1);
+            Controls.Add(logWorkspace);
+
+            // Start listening even while the Flash Log tab is selected.
+            embeddedHidConsole.Show();
+            ResumeLayout(true);
+        }
+
         #region Window Events
         public MainWindow()
         {
             InitializeComponent();
+            InitializeHidLogWorkspace();
         }
 
         public MainWindow(string path) : this()
@@ -101,6 +217,9 @@ namespace QMK_Toolbox
 
         private void MainWindow_Shown(object sender, EventArgs e)
         {
+            // Receive console reports even when the user stays on Flash Log.
+            embeddedHidConsole.StartHidListening();
+
             if (Settings.Default.firstStart)
             {
                 EmbeddedResourceHelper.InitResourceFolder();
@@ -170,6 +289,7 @@ namespace QMK_Toolbox
             Settings.Default.targetSetting = (string)mcuBox.SelectedValue;
             Settings.Default.Save();
 
+            embeddedHidConsole?.Close();
             usbListener.Dispose();
         }
 
@@ -519,8 +639,8 @@ namespace QMK_Toolbox
 
         private void HidConsoleToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            HidConsoleWindow.GetInstance().Show(this);
-            HidConsoleWindow.GetInstance().Focus();
+            logTabs.SelectedTab = hidLogTab;
+            logTabs.Focus();
         }
         #endregion
 
