@@ -16,6 +16,35 @@ namespace QMK_Toolbox.Hid
             InitializeComponent();
         }
 
+        // When hosted inside the main window's tab control, show only the log.
+        // The device list remains present internally with "all devices" active.
+        // This gives the Flash Log and HID Console the same exact display bounds.
+        public void ConfigureEmbeddedLayout()
+        {
+            SuspendLayout();
+            consoleList.Visible = false;
+            Padding = Padding.Empty;
+            logTextBox.Anchor = AnchorStyles.None;
+            logTextBox.Margin = Padding.Empty;
+            logTextBox.Dock = DockStyle.Fill;
+            ResumeLayout(true);
+        }
+
+        private bool hidListenerStarted;
+
+        public void StartHidListening()
+        {
+            if (hidListenerStarted)
+            {
+                return;
+            }
+            hidListenerStarted = true;
+            hidListener.hidDeviceConnected += HidDeviceConnected;
+            hidListener.hidDeviceDisconnected += HidDeviceDisconnected;
+            hidListener.consoleReportReceived += ConsoleReportReceived;
+            hidListener.Start();
+        }
+
         public static HidConsoleWindow GetInstance()
         {
             if (instance == null)
@@ -34,10 +63,7 @@ namespace QMK_Toolbox.Hid
                 CenterToParent();
             }
 
-            hidListener.hidDeviceConnected += HidDeviceConnected;
-            hidListener.hidDeviceDisconnected += HidDeviceDisconnected;
-            hidListener.consoleReportReceived += ConsoleReportReceived;
-            hidListener.Start();
+            StartHidListening();
         }
 
         private void HidConsoleWindow_FormClosing(object sender, FormClosingEventArgs e)
